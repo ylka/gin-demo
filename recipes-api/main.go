@@ -1,110 +1,41 @@
 package main
 
 import (
-	"encoding/json"
-	"net/http"
-	"os"
-	"strings"
-	"time"
-
+	"context"
+	"gin-demo/recipes-api/handlers"
 	"github.com/gin-gonic/gin"
-	"github.com/rs/xid"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"log"
 )
 
-var recipes []Recipe
+var recipesHandler *handlers.RecipesHandler
 
 func init() {
-	recipes = make([]Recipe, 0)
-	file, _ := os.ReadFile("recipes.json")
-	_ = json.Unmarshal(file, &recipes)
-}
-
-type Recipe struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Tags         []string  `json:"tags"`
-	Ingredients  []string  `json:"ingredients"`
-	Instructions []string  `json:"instructions"`
-	PublishedAt  time.Time `json:"publishedAt"`
-}
-
-func NewRecipeHandler(c *gin.Context) {
-	var recipe Recipe
-	if err := c.ShouldBindJSON(&recipe); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	ctx := context.Background()
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://root:Glb%4012345@10.100.1.217:27017/"))
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	recipe.ID = xid.New().String()
-	recipe.PublishedAt = time.Now()
-	recipes = append(recipes, recipe)
-	c.JSON(http.StatusOK, recipe)
-
-}
-
-func ListRecipesHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, recipes)
-}
-
-func UpdateRecipeHandler(c *gin.Context) {
-	id := c.Param("id")
-	var recipe Recipe
-	if err := c.ShouldBindJSON(&recipe); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	if err = client.Ping(context.TODO(),
+		readpref.Primary()); err != nil {
+		log.Fatal(err)
 	}
+	log.Println("Connected to MongoDB")
 
-	for i, r := range recipes {
-		if r.ID == id {
-			recipe.ID = r.ID
-			recipe.PublishedAt = time.Now()
-
-			recipes[i] = recipe
-			c.JSON(http.StatusOK, recipe)
-			return
-		}
-	}
-
-	c.JSON(http.StatusNotFound, gin.H{"error": "recipe not found"})
-}
-
-func DeleteRecipeHandler(c *gin.Context) {
-	id := c.Param("id")
-
-	for i, r := range recipes {
-		if r.ID == id {
-			recipes = append(recipes[:i], recipes[i+1:]...)
-			c.JSON(http.StatusOK, gin.H{"message": "recipe deleted"})
-			return
-		}
-	}
-
-	c.JSON(http.StatusNotFound, gin.H{"error": "recipe not found"})
-}
-
-func SearchRecipesHandler(c *gin.Context) {
-	tag := c.Query("tag")
-	listOfRecipes := make([]Recipe, 0)
-
-	for _, r := range recipes {
-		for _, t := range r.Tags {
-			if strings.EqualFold(t, tag) {
-				listOfRecipes = append(listOfRecipes, r)
-			}
-		}
-	}
-
-	c.JSON(http.StatusOK, listOfRecipes)
+	collection := client.Database("demo1203").Collection("recipes")
+	recipesHandler = handlers.NewRecipesHandler(ctx, collection)
 }
 
 func main() {
 	r := gin.Default()
 
-	r.POST("/recipes", NewRecipeHandler)
-	r.GET("/recipes", ListRecipesHandler)
-	r.PUT("/recipes/:id", UpdateRecipeHandler)
-	r.DELETE("/recipes/:id", DeleteRecipeHandler)
-	r.GET("/recipes/search", SearchRecipesHandler)
+	r.POST("/recipes", recipesHandler.NewRecipeHandler)
+	r.GET("/recipes", recipesHandler.ListRecipesHandler)
+	r.PUT("/recipes/:id", recipesHandler.UpdateRecipeHandler)
+	r.DELETE("/recipes/:id", recipesHandler.DeleteRecipeHandler)
+	// r.GET("/recipes/search", SearchRecipesHandler)
 
 	r.Run()
 }
