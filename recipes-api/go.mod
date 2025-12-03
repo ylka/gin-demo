@@ -2,7 +2,10 @@ module gin-demo/recipes-api
 
 go 1.25.3
 
-require github.com/gin-gonic/gin v1.11.0
+require (
+	github.com/gin-gonic/gin v1.11.0
+	github.com/rs/xid v1.6.0
+)
 
 require (
 	github.com/bytedance/sonic v1.14.0 // indirect
