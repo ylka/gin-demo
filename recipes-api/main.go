@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gin-demo/recipes-api/handlers"
 	"log"
+	"os"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,13 +14,18 @@ import (
 
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
+
+	"github.com/joho/godotenv"
 )
 
 var recipesHandler *handlers.RecipesHandler
 
 func init() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found")
+	}
 	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://root:Glb%4012345@10.100.1.217:27017/"))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(os.Getenv("MONGO")))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -32,8 +38,8 @@ func init() {
 	collection := client.Database("demo1203").Collection("recipes")
 
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:     "10.100.1.217:6379",
-		Password: "8URXPL2x3HZMi7xoGTdk3Upc",
+		Addr:     os.Getenv("REDIS_ADDR"),
+		Password: os.Getenv("REDIS_PWD"),
 		DB:       0,
 	})
 	status := redisClient.Ping(ctx)
@@ -45,11 +51,15 @@ func init() {
 func main() {
 	r := gin.Default()
 
-	r.POST("/recipes", recipesHandler.NewRecipeHandler)
 	r.GET("/recipes", recipesHandler.ListRecipesHandler)
-	r.PUT("/recipes/:id", recipesHandler.UpdateRecipeHandler)
-	r.DELETE("/recipes/:id", recipesHandler.DeleteRecipeHandler)
-	// r.GET("/recipes/search", SearchRecipesHandler)
+
+	authorized := r.Group("/")
+	authorized.Use(handlers.AuthMiddleware())
+
+	authorized.POST("/recipes", recipesHandler.NewRecipeHandler)
+	authorized.PUT("/recipes/:id", recipesHandler.UpdateRecipeHandler)
+	authorized.DELETE("/recipes/:id", recipesHandler.DeleteRecipeHandler)
+	// authorized.GET("/recipes/search", SearchRecipesHandler)
 
 	r.Run()
 }
